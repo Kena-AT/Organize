@@ -1,6 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import Database from "@tauri-apps/plugin-sql";
-import { Rule } from "@/types";
+import { Rule, PreviewOperation } from "@/types";
 
 export const ipcService = {
   ping: async (): Promise<string> => {
@@ -68,6 +68,39 @@ export const ipcService = {
     } catch (error) {
       console.error("Error deleting rule:", error);
       throw error;
+    }
+  },
+
+  getPreview: async (folderPath: string, destinationPath: string, rules: Rule[]): Promise<PreviewOperation[]> => {
+    try {
+      return await invoke<PreviewOperation[]>("get_preview", { folderPath, destinationPath, rules });
+    } catch (error) {
+      console.error("Error getting preview:", error);
+      throw error;
+    }
+  },
+
+  runOrganization: async (operations: PreviewOperation[]): Promise<PreviewOperation[]> => {
+    try {
+      return await invoke<PreviewOperation[]>("run_organization", { operations });
+    } catch (error) {
+      console.error("Error running organization:", error);
+      throw error;
+    }
+  },
+
+  async selectFolder(): Promise<string | null> {
+    try {
+      const { open } = await import("@tauri-apps/plugin-dialog");
+      const selected = await open({
+        directory: true,
+        multiple: false,
+        title: "Select Folder",
+      });
+      return selected as string | null;
+    } catch (error) {
+      console.error("Error selecting folder:", error);
+      return null;
     }
   },
 };

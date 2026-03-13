@@ -4,6 +4,7 @@ import { useState } from "react";
 import { FolderOpen, ArrowRight, Save, X, Settings2 } from "lucide-react";
 import { Rule } from "@/types";
 import { Tooltip } from "@/components/ui/tooltip";
+import { ipcService } from "@/services/ipcService";
 
 interface RuleBuilderProps {
   onSave: (rule: Rule) => void;
@@ -17,6 +18,13 @@ export function RuleBuilder({ onSave, onCancel, initialRule }: RuleBuilderProps)
   const [conditionValue, setConditionValue] = useState(initialRule?.condition_value || "");
   const [actionType, setActionType] = useState(initialRule?.action_type || "move");
   const [actionTarget, setActionTarget] = useState(initialRule?.action_target || "");
+
+  const handleBrowseTarget = async () => {
+    const selected = await ipcService.selectFolder();
+    if (selected) {
+      setActionTarget(selected);
+    }
+  };
 
   const handleSave = () => {
     if (!name || !conditionValue || !actionTarget) return;
@@ -120,7 +128,10 @@ export function RuleBuilder({ onSave, onCancel, initialRule }: RuleBuilderProps)
                    className="flex-1 rounded-xl border border-white/5 bg-[#0B0B13] px-4 py-3 text-sm text-white outline-none"
                  />
                  <Tooltip content="Browse for target folder">
-                   <button className="p-3 rounded-xl bg-white/5 border border-white/5 text-zinc-400 hover:text-white transition-colors">
+                   <button 
+                     onClick={handleBrowseTarget}
+                     className="p-3 rounded-xl bg-white/5 border border-white/5 text-zinc-400 hover:text-white transition-colors"
+                   >
                      <FolderOpen className="h-5 w-5" />
                    </button>
                  </Tooltip>
