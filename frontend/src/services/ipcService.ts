@@ -138,4 +138,31 @@ export const ipcService = {
       throw error;
     }
   },
+
+  getSetting: async (key: string): Promise<string | null> => {
+    try {
+      return await invoke<string | null>("get_setting", { key });
+    } catch (error) {
+      console.error(`Error getting setting ${key}:`, error);
+      return null;
+    }
+  },
+
+  setSetting: async (key: string, value: string): Promise<void> => {
+    try {
+      await invoke<void>("set_setting", { key, value });
+    } catch (error) {
+      console.error(`Error setting ${key}:`, error);
+      throw error;
+    }
+  },
+
+  getAllSettings: async (): Promise<Record<string, string>> => {
+    try {
+      return await invoke<Record<string, string>>("get_all_settings");
+    } catch (error) {
+      console.error("Error getting all settings:", error);
+      return {};
+    }
+  },
 };

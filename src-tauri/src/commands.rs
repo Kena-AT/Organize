@@ -4,6 +4,7 @@ use rusqlite::Connection;
 use uuid::Uuid;
 use serde::Serialize;
 use std::path::Path;
+use std::collections::HashMap;
 
 #[derive(Clone, Serialize)]
 struct ProgressPayload {
@@ -19,8 +20,27 @@ pub fn ping() -> String {
 }
 
 #[tauri::command]
-pub async fn get_preview(folder_path: String, destination_path: String, rules: Vec<Rule>) -> Result<Vec<PreviewOperation>, String> {
-    Ok(Scanner::scan_folder(&folder_path, &destination_path, rules))
+pub async fn get_preview(app: AppHandle, folder_path: String, destination_path: String, rules: Vec<Rule>) -> Result<Vec<PreviewOperation>, String> {
+    let mut protected_folders: Vec<String> = Vec::new();
+    
+    if let Ok(data_dir) = app.path().app_data_dir() {
+        let db_path = data_dir.join("organize.db");
+        if let Ok(conn) = Connection::open(db_path) {
+            if let Ok(mut stmt) = conn.prepare("SELECT value FROM settings WHERE key = 'protected_folders'") {
+                if let Ok(mut rows) = stmt.query([]) {
+                    if let Ok(Some(row)) = rows.next() {
+                        if let Ok(value) = row.get::<_, String>(0) {
+                            if let Ok(parsed) = serde_json::from_str::<Vec<String>>(&value) {
+                                protected_folders = parsed;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    Ok(Scanner::scan_folder(&folder_path, &destination_path, rules, protected_folders))
 }
 
 #[derive(Clone, Serialize)]
@@ -287,6 +307,75 @@ pub async fn undo_run(app: AppHandle, run_id: String) -> Result<Vec<UndoResult>,
                 
                 let _ = app.emit("run-complete", run_id);
                 Ok(results)
+            }
+            Err(e) => Err(e.to_string()),
+        }
+    } else {
+        Err("Failed to get app data directory".to_string())
+    }
+}
+
+#[tauri::command]
+pub async fn get_setting(app: AppHandle, key: String) -> Result<Option<String>, String> {
+    if let Ok(data_dir) = app.path().app_data_dir() {
+        let db_path = data_dir.join("organize.db");
+        match Connection::open(db_path) {
+            Ok(conn) => {
+                let mut stmt = conn.prepare("SELECT value FROM settings WHERE key = ?1").map_err(|e| e.to_string())?;
+                let mut rows = stmt.query([key]).map_err(|e| e.to_string())?;
+                
+                if let Ok(Some(row)) = rows.next() {
+                    let value: String = row.get(0).map_err(|e| e.to_string())?;
+                    Ok(Some(value))
+                } else {
+                    Ok(None)
+                }
+            }
+            Err(e) => Err(e.to_string()),
+        }
+    } else {
+        Err("Failed to get app data directory".to_string())
+    }
+}
+
+#[tauri::command]
+pub async fn set_setting(app: AppHandle, key: String, value: String) -> Result<(), String> {
+    if let Ok(data_dir) = app.path().app_data_dir() {
+        let db_path = data_dir.join("organize.db");
+        match Connection::open(db_path) {
+            Ok(conn) => {
+                conn.execute(
+                    "INSERT INTO settings (key, value) VALUES (?1, ?2) 
+                     ON CONFLICT(key) DO UPDATE SET value = ?2",
+                    [&key, &value]
+                ).map_err(|e| e.to_string())?;
+                Ok(())
+            }
+            Err(e) => Err(e.to_string()),
+        }
+    } else {
+        Err("Failed to get app data directory".to_string())
+    }
+}
+
+#[tauri::command]
+pub async fn get_all_settings(app: AppHandle) -> Result<HashMap<String, String>, String> {
+    if let Ok(data_dir) = app.path().app_data_dir() {
+        let db_path = data_dir.join("organize.db");
+        match Connection::open(db_path) {
+            Ok(conn) => {
+                let mut stmt = conn.prepare("SELECT key, value FROM settings").map_err(|e| e.to_string())?;
+                let rows = stmt.query_map([], |row| {
+                    Ok((row.get(0)?, row.get(1)?))
+                }).map_err(|e| e.to_string())?;
+                
+                let mut settings = HashMap::new();
+                for row in rows {
+                    if let Ok((k, v)) = row {
+                        settings.insert(k, v);
+                    }
+                }
+                Ok(settings)
             }
             Err(e) => Err(e.to_string()),
         }

@@ -39,6 +39,7 @@ export default function DashboardPage() {
   const [conflictStrategy, setConflictStrategy] = useState<"skip" | "rename" | "replace">("rename");
 
   useEffect(() => {
+    loadSettings();
     loadRules();
     
     const setupListeners = async () => {
@@ -58,6 +59,19 @@ export default function DashboardPage() {
   async function loadRules() {
     const data = await ipcService.getRules();
     setRules(data);
+  }
+
+  async function loadSettings() {
+    const allSettings = await ipcService.getAllSettings();
+    if (allSettings.default_source_folder) {
+      setSourceFolder(allSettings.default_source_folder);
+    }
+    if (allSettings.default_destination_folder) {
+      setDestinationFolder(allSettings.default_destination_folder);
+    }
+    if (allSettings.conflict_strategy) {
+      setConflictStrategy(allSettings.conflict_strategy as "skip" | "rename" | "replace");
+    }
   }
 
   async function handleGeneratePreview() {

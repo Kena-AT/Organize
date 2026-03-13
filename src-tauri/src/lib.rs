@@ -71,7 +71,10 @@ pub fn run() {
             commands::run_organization,
             commands::get_history,
             commands::get_run_operations,
-            commands::undo_run
+            commands::undo_run,
+            commands::get_setting,
+            commands::set_setting,
+            commands::get_all_settings
         ])
         .setup(|_app| Ok(()))
         .run(tauri::generate_context!())

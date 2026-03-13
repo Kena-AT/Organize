@@ -29,7 +29,7 @@ pub struct PreviewOperation {
 pub struct Scanner;
 
 impl Scanner {
-    pub fn scan_folder(path: &str, base_destination: &str, rules: Vec<Rule>) -> Vec<PreviewOperation> {
+    pub fn scan_folder(path: &str, base_destination: &str, rules: Vec<Rule>, protected_folders: Vec<String>) -> Vec<PreviewOperation> {
         let mut operations = Vec::new();
         let source_path = Path::new(path);
 
@@ -43,8 +43,14 @@ impl Scanner {
             .filter(|r| r.status == "active")
             .collect();
 
-        for entry in WalkDir::new(source_path)
-            .into_iter()
+        let protected_paths: Vec<PathBuf> = protected_folders.iter().map(PathBuf::from).collect();
+
+        let walker = WalkDir::new(source_path).into_iter().filter_entry(move |e| {
+            let path = e.path();
+            !protected_paths.iter().any(|p| path.starts_with(p))
+        });
+
+        for entry in walker
             .filter_map(|e| e.ok())
             .filter(|e| e.file_type().is_file())
         {
