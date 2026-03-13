@@ -1,6 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import Database from "@tauri-apps/plugin-sql";
-import { Rule, PreviewOperation, RunRecord } from "@/types";
+import { Rule, PreviewOperation, RunRecord, UndoResult } from "@/types";
 
 export const ipcService = {
   ping: async (): Promise<string> => {
@@ -127,6 +127,15 @@ export const ipcService = {
     } catch (error) {
       console.error("Error selecting folder:", error);
       return null;
+    }
+  },
+
+  undoRun: async (runId: string): Promise<UndoResult[]> => {
+    try {
+      return await invoke<UndoResult[]>("undo_run", { runId });
+    } catch (error) {
+      console.error("Error undoing run:", error);
+      throw error;
     }
   },
 };

@@ -12,16 +12,18 @@ import {
   Search,
   ChevronRight,
   FolderOpen,
-  ArrowRight
+  ArrowRight,
+  Undo2,
+  Loader2
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { Tooltip } from "@/components/ui/tooltip";
 
 export default function HistoryPage() {
   const [history, setHistory] = useState<RunRecord[]>([]);
   const [selectedRun, setSelectedRun] = useState<string | null>(null);
   const [runOperations, setRunOperations] = useState<PreviewOperation[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [isUndoing, setIsUndoing] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
 
   useEffect(() => {
@@ -47,6 +49,27 @@ export default function HistoryPage() {
       setRunOperations(ops);
     } catch (err) {
       console.error("Failed to load run details:", err);
+    }
+  }
+
+  async function handleUndoRun() {
+    if (!selectedRun) return;
+    
+    const confirmUndo = window.confirm("Are you sure you want to undo this run? This will attempt to move files back to their original locations.");
+    if (!confirmUndo) return;
+
+    setIsUndoing(true);
+    try {
+      await ipcService.undoRun(selectedRun);
+      // Refresh data
+      await loadHistory();
+      await handleSelectRun(selectedRun);
+      alert("Undo operation completed.");
+    } catch (err) {
+      console.error("Failed to undo run:", err);
+      alert("Undo failed. See console for details.");
+    } finally {
+      setIsUndoing(false);
     }
   }
 
@@ -79,7 +102,7 @@ export default function HistoryPage() {
         {/* Runs List */}
         <div className="lg:col-span-12 xl:col-span-5 flex flex-col gap-4">
           <div className="rounded-3xl border border-white/5 bg-[#0B0B13] overflow-hidden flex flex-col flex-1 shadow-2xl shadow-black/50">
-            <div className="p-6 border-b border-white/5 flex items-center justify-between bg-white/[0.02]">
+            <div className="p-6 border-b border-white/5 flex items-center justify-between bg-white/2">
               <div className="flex items-center gap-2">
                 <HistoryIcon className="h-4 w-4 text-indigo-400" />
                 <span className="text-xs font-bold text-zinc-400 uppercase tracking-widest">Recent Runs</span>
@@ -94,7 +117,7 @@ export default function HistoryPage() {
                   <p className="text-sm font-medium animate-pulse">Retrieving history...</p>
                 </div>
               ) : filteredHistory.length === 0 ? (
-                <div className="text-center py-20 px-8 text-zinc-700 bg-white/[0.01] rounded-2xl border border-white/5 m-4 border-dashed">
+                <div className="text-center py-20 px-8 text-zinc-700 bg-white/1 rounded-2xl border border-white/5 m-4 border-dashed">
                   <Files className="h-12 w-12 mx-auto mb-4 opacity-10" />
                   <p className="text-sm font-medium">No activity recorded yet</p>
                 </div>
@@ -107,7 +130,7 @@ export default function HistoryPage() {
                       "w-full rounded-2xl p-4 transition-all duration-300 group text-left border relative overflow-hidden",
                       selectedRun === run.id 
                         ? "bg-indigo-600/10 border-indigo-500/30 ring-1 ring-indigo-500/20" 
-                        : "bg-white/[0.02] border-white/5 hover:bg-white/[0.04] hover:border-white/10"
+                        : "bg-white/2 border-white/5 hover:bg-white/4 hover:border-white/10"
                     )}
                   >
                     {selectedRun === run.id && (
@@ -171,7 +194,7 @@ export default function HistoryPage() {
           <div className="rounded-3xl border border-white/5 bg-[#0B0B13] overflow-hidden flex flex-col flex-1 shadow-2xl shadow-black/50">
             {selectedRun ? (
               <>
-                <div className="p-6 border-b border-white/5 bg-white/[0.02] flex items-center justify-between">
+                <div className="p-6 border-b border-white/5 bg-white/2 flex items-center justify-between">
                   <div className="flex items-center gap-3">
                     <div className="h-8 w-8 rounded-xl bg-indigo-500/10 flex items-center justify-center border border-indigo-500/20">
                       <Files className="h-4 w-4 text-indigo-400" />
@@ -181,6 +204,23 @@ export default function HistoryPage() {
                       <p className="text-[10px] font-bold text-zinc-600 uppercase tracking-widest">{selectedRun.slice(0, 8)}</p>
                     </div>
                   </div>
+
+                  <button
+                    onClick={handleUndoRun}
+                    disabled={isUndoing}
+                    className={cn(
+                      "flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all",
+                      "bg-white/5 border border-white/10 text-zinc-300 hover:bg-white/10 hover:text-white",
+                      "disabled:opacity-50 disabled:cursor-not-allowed"
+                    )}
+                  >
+                    {isUndoing ? (
+                      <Loader2 className="h-3 w-3 animate-spin" />
+                    ) : (
+                      <Undo2 className="h-3 w-3" />
+                    )}
+                    {isUndoing ? "Undoing..." : "Undo Run"}
+                  </button>
                 </div>
 
                 <div className="flex-1 overflow-x-auto custom-scrollbar">
@@ -195,7 +235,7 @@ export default function HistoryPage() {
                     </thead>
                     <tbody className="divide-y divide-white/5">
                       {runOperations.map((op, idx) => (
-                        <tr key={idx} className="group hover:bg-white/[0.01] transition-colors">
+                        <tr key={idx} className="group hover:bg-white/1 transition-colors">
                           <td className="px-6 py-4">
                             <span className={cn(
                               "text-[10px] font-extrabold uppercase px-2 py-1 rounded-lg",
@@ -246,7 +286,7 @@ export default function HistoryPage() {
                 </div>
               </>
             ) : (
-              <div className="flex flex-col items-center justify-center flex-1 text-zinc-700 bg-white/[0.01]">
+              <div className="flex flex-col items-center justify-center flex-1 text-zinc-700 bg-white/1">
                 <div className="relative mb-6">
                   <FolderOpen className="h-16 w-16 opacity-5" />
                   <HistoryIcon className="h-8 w-8 absolute -bottom-2 -right-2 text-zinc-800" />

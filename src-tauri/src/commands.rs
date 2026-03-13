@@ -183,3 +183,114 @@ pub async fn get_run_operations(app: AppHandle, run_id: String) -> Result<Vec<Pr
         Err("Failed to get app data directory".to_string())
     }
 }
+
+#[derive(Clone, Serialize)]
+pub struct UndoResult {
+    pub success: bool,
+    pub original_path: String,
+    pub message: Option<String>,
+}
+
+#[tauri::command]
+pub async fn undo_run(app: AppHandle, run_id: String) -> Result<Vec<UndoResult>, String> {
+    let mut results = Vec::new();
+
+    if let Ok(data_dir) = app.path().app_data_dir() {
+        let db_path = data_dir.join("organize.db");
+        match Connection::open(db_path) {
+            Ok(conn) => {
+                // Fetch successful operations for this run
+                let mut stmt = conn.prepare(
+                    "SELECT id, source_path, target_path, action, status 
+                     FROM history WHERE run_id = ?1 AND (status = 'success' OR status = 'executed')"
+                ).map_err(|e| e.to_string())?;
+                
+                struct HistoryRecord {
+                    id: String,
+                    source_path: String,
+                    target_path: String,
+                    action: String,
+                }
+
+                let rows = stmt.query_map([&run_id], |row| {
+                    Ok(HistoryRecord {
+                        id: row.get(0)?,
+                        source_path: row.get(1)?,
+                        target_path: row.get(2)?,
+                        action: row.get(3)?,
+                    })
+                }).map_err(|e| e.to_string())?;
+
+                let records: Vec<HistoryRecord> = rows.filter_map(|r| r.ok()).collect();
+                let total = records.len();
+
+                for (i, record) in records.into_iter().enumerate() {
+                    let source = Path::new(&record.source_path);
+                    let target = Path::new(&record.target_path);
+
+                    let original_name = source
+                        .file_name()
+                        .map(|n: &std::ffi::OsStr| n.to_string_lossy().to_string())
+                        .unwrap_or_default();
+
+                    let mut undo_success = false;
+                    let mut error_msg = None;
+
+                    // Ensure the original parent directory exists
+                    if let Some(parent) = source.parent() {
+                        let _ = std::fs::create_dir_all(parent);
+                    }
+
+                    if !target.exists() {
+                        error_msg = Some("Target file no longer exists".to_string());
+                    } else if source.exists() {
+                        error_msg = Some("Original file path is blocked by another file".to_string());
+                    } else {
+                        // Reverse the action
+                        let res = match record.action.as_str() {
+                            "move" => std::fs::rename(target, source).map(|_| ()),
+                            "copy" => std::fs::remove_file(target).map(|_| ()),
+                            "delete" => Err(std::io::Error::new(std::io::ErrorKind::Other, "Cannot undo delete without recycle bin")),
+                            _ => Ok(()),
+                        };
+
+                        match res {
+                            Ok(_) => {
+                                undo_success = true;
+                                // Update status to undone
+                                let _ = conn.execute(
+                                    "UPDATE history SET status = 'undone' WHERE id = ?1",
+                                    [&record.id],
+                                );
+                            },
+                            Err(e) => {
+                                error_msg = Some(e.to_string());
+                            }
+                        }
+                    }
+
+                    let status_str = if undo_success { "success" } else { "error" };
+                    
+                    let _ = app.emit("run-progress", ProgressPayload {
+                        current: i + 1,
+                        total,
+                        filename: format!("Undoing {}", original_name),
+                        status: status_str.to_string(),
+                    });
+
+                    results.push(UndoResult {
+                        success: undo_success,
+                        original_path: record.source_path,
+                        message: error_msg,
+                    });
+                }
+                
+                let _ = app.emit("run-complete", run_id);
+                Ok(results)
+            }
+            Err(e) => Err(e.to_string()),
+        }
+    } else {
+        Err("Failed to get app data directory".to_string())
+    }
+}

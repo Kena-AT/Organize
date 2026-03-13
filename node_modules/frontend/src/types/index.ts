@@ -34,3 +34,9 @@ export interface RunRecord {
   source_folder: string;
   destination_folder: string;
 }
+
+export interface UndoResult {
+  success: boolean;
+  original_path: string;
+  message?: string;
+}
