@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { FolderOpen, ArrowRight, Save, X, Settings2 } from "lucide-react";
+import { FolderOpen, ArrowRight, Save, X } from "lucide-react";
 import { Rule } from "@/types";
 import { Tooltip } from "@/components/ui/tooltip";
 import { ipcService } from "@/services/ipcService";

@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use walkdir::WalkDir;
+use rayon::prelude::*;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Rule {
@@ -45,49 +46,49 @@ impl Scanner {
 
         let protected_paths: Vec<PathBuf> = protected_folders.iter().map(PathBuf::from).collect();
 
-        let walker = WalkDir::new(source_path).into_iter().filter_entry(move |e| {
-            let path = e.path();
-            !protected_paths.iter().any(|p| path.starts_with(p))
-        });
-
-        for entry in walker
+        // Collect matching entries first
+        let entries: Vec<PathBuf> = WalkDir::new(source_path).into_iter()
+            .filter_entry(move |e| {
+                let path = e.path();
+                !protected_paths.iter().any(|p| path.starts_with(p))
+            })
             .filter_map(|e| e.ok())
             .filter(|e| e.file_type().is_file())
-        {
-            let file_path = entry.path();
-            let file_name = entry.file_name().to_string_lossy().to_string();
+            .map(|e| e.path().to_path_buf())
+            .collect();
+
+        // Parallel rule matching and target resolution
+        operations = entries.into_par_iter().map(|file_path| {
+            let file_name = file_path.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
             
-            let mut matched = false;
+            let mut matched_op = None;
             for rule in &active_rules {
-                if Scanner::matches_rule(file_path, &file_name, rule) {
-                    operations.push(PreviewOperation {
+                if Scanner::matches_rule(&file_path, &file_name, rule) {
+                    matched_op = Some(PreviewOperation {
                         rule_name: rule.name.clone(),
                         original_path: file_path.to_string_lossy().to_string(),
                         original_name: file_name.clone(),
                         suggested_action: rule.action_type.clone(),
-                        suggested_target: Scanner::resolve_target_path(file_path, base_destination, rule),
+                        suggested_target: Scanner::resolve_target_path(&file_path, base_destination, rule),
                         conflict_strategy: "skip".to_string(),
                         status: "pending".to_string(),
                         error_message: None,
                     });
-                    matched = true;
                     break;
                 }
             }
 
-            if !matched {
-                operations.push(PreviewOperation {
-                    rule_name: "Default".to_string(),
-                    original_path: file_path.to_string_lossy().to_string(),
-                    original_name: file_name.clone(),
-                    suggested_action: "skip".to_string(),
-                    suggested_target: "".to_string(),
-                    conflict_strategy: "skip".to_string(),
-                    status: "skipped".to_string(),
-                    error_message: None,
-                });
-            }
-        }
+            matched_op.unwrap_or_else(|| PreviewOperation {
+                rule_name: "Default".to_string(),
+                original_path: file_path.to_string_lossy().to_string(),
+                original_name: file_name.clone(),
+                suggested_action: "skip".to_string(),
+                suggested_target: "".to_string(),
+                conflict_strategy: "skip".to_string(),
+                status: "skipped".to_string(),
+                error_message: None,
+            })
+        }).collect();
 
         operations
     }
@@ -233,6 +234,21 @@ impl Scanner {
         if let Some(file_name) = original_path.file_name() {
             target.push(file_name);
         }
+
+        // --- Safety Check: Check if target is same as source ---
+        // Normalize paths for comparison
+        if let (Ok(abs_source), Ok(abs_target)) = (
+            std::fs::canonicalize(original_path),
+            // We can't canonicalize a target that doesn't exist yet, 
+            // so we'll do a basic comparison or wait until execution.
+            // But we can check if the paths are identical as strings/PathBufs.
+            std::fs::canonicalize(&target).or_else(|_| Ok::<PathBuf, std::io::Error>(target.clone()))
+        ) {
+            if abs_source == abs_target {
+                return "".to_string(); // Indicate "no change"
+            }
+        }
+
         target.to_string_lossy().to_string()
     }
 }

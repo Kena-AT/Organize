@@ -1,6 +1,6 @@
 "use client";
 
-import { Bell, Search, Activity } from "lucide-react";
+import { Search, Activity } from "lucide-react";
 
 export function Header() {
   return (

@@ -15,6 +15,7 @@ export default function RulesPage() {
   const [editingRule, setEditingRule] = useState<Rule | null>(null);
   const [loading, setLoading] = useState(true);
 
+  // Memoize loadRules to prevent unnecessary re-renders and ensure stable reference
   const loadRules = useCallback(async () => {
     setLoading(true);
     let fetchedRules = await ipcService.getRules();
@@ -62,11 +63,21 @@ export default function RulesPage() {
     
     setRules(fetchedRules);
     setLoading(false);
-  }, []);
+  }, []); // Empty dependency array means this function is created once
 
   useEffect(() => {
-    loadRules();
-  }, [loadRules]);
+    let isMounted = true;
+    async function fetchRules() {
+      setLoading(true);
+      const fetchedRules = await ipcService.getRules();
+      if (isMounted) {
+        setRules(fetchedRules);
+        setLoading(false);
+      }
+    }
+    fetchRules();
+    return () => { isMounted = false; };
+  }, []);
 
   const handleSaveRule = async (ruleData: Rule) => {
     await ipcService.saveRule(ruleData);

@@ -1,5 +1,6 @@
 use tauri::{AppHandle, Emitter, Manager};
 use crate::scanner::{Scanner, Rule, PreviewOperation};
+use crate::error::{AppError, AppResult};
 use rusqlite::Connection;
 use uuid::Uuid;
 use serde::Serialize;
@@ -20,23 +21,20 @@ pub fn ping() -> String {
 }
 
 #[tauri::command]
-pub async fn get_preview(app: AppHandle, folder_path: String, destination_path: String, rules: Vec<Rule>) -> Result<Vec<PreviewOperation>, String> {
+pub async fn get_preview(app: AppHandle, folder_path: String, destination_path: String, rules: Vec<Rule>) -> Result<Vec<PreviewOperation>, AppError> {
     let mut protected_folders: Vec<String> = Vec::new();
     
-    if let Ok(data_dir) = app.path().app_data_dir() {
-        let db_path = data_dir.join("organize.db");
-        if let Ok(conn) = Connection::open(db_path) {
-            if let Ok(mut stmt) = conn.prepare("SELECT value FROM settings WHERE key = 'protected_folders'") {
-                if let Ok(mut rows) = stmt.query([]) {
-                    if let Ok(Some(row)) = rows.next() {
-                        if let Ok(value) = row.get::<_, String>(0) {
-                            if let Ok(parsed) = serde_json::from_str::<Vec<String>>(&value) {
-                                protected_folders = parsed;
-                            }
-                        }
-                    }
-                }
-            }
+    let data_dir = app.path().app_data_dir()?;
+    let db_path = data_dir.join("organize.db");
+    
+    let conn = Connection::open(db_path)?;
+    let mut stmt = conn.prepare("SELECT value FROM settings WHERE key = 'protected_folders'")?;
+    let mut rows = stmt.query([])?;
+    
+    if let Some(row) = rows.next()? {
+        let value: String = row.get(0)?;
+        if let Ok(parsed) = serde_json::from_str::<Vec<String>>(&value) {
+            protected_folders = parsed;
         }
     }
 
@@ -60,7 +58,7 @@ pub async fn run_organization(
     operations: Vec<PreviewOperation>,
     source_folder: String,
     destination_folder: String
-) -> Result<Vec<PreviewOperation>, String> {
+) -> Result<Vec<PreviewOperation>, AppError> {
     let run_id = Uuid::new_v4().to_string();
     let app_handle = app.clone();
     
@@ -122,86 +120,74 @@ pub async fn run_organization(
 }
 
 #[tauri::command]
-pub async fn get_history(app: AppHandle) -> Result<Vec<RunRecord>, String> {
-    if let Ok(data_dir) = app.path().app_data_dir() {
-        let db_path = data_dir.join("organize.db");
-        match Connection::open(db_path) {
-            Ok(conn) => {
-                let mut stmt = conn.prepare(
-                    "SELECT id, timestamp, total_files, success_count, error_count, source_folder, destination_folder 
-                     FROM runs ORDER BY timestamp DESC LIMIT 50"
-                ).map_err(|e| e.to_string())?;
-                
-                let rows = stmt.query_map([], |row| {
-                    Ok(RunRecord {
-                        id: row.get(0)?,
-                        timestamp: row.get(1)?,
-                        total_files: row.get(2)?,
-                        success_count: row.get(3)?,
-                        error_count: row.get(4)?,
-                        source_folder: row.get(5)?,
-                        destination_folder: row.get(6)?,
-                    })
-                }).map_err(|e| e.to_string())?;
+pub async fn get_history(app: AppHandle) -> Result<Vec<RunRecord>, AppError> {
+    let data_dir = app.path().app_data_dir()?;
+    let db_path = data_dir.join("organize.db");
+    let conn = Connection::open(db_path)?;
+    
+    let mut stmt = conn.prepare(
+        "SELECT id, timestamp, total_files, success_count, error_count, source_folder, destination_folder 
+         FROM runs ORDER BY timestamp DESC LIMIT 50"
+    )?;
+    
+    let rows = stmt.query_map([], |row| {
+        Ok(RunRecord {
+            id: row.get(0)?,
+            timestamp: row.get(1)?,
+            total_files: row.get(2)?,
+            success_count: row.get(3)?,
+            error_count: row.get(4)?,
+            source_folder: row.get(5)?,
+            destination_folder: row.get(6)?,
+        })
+    })?;
 
-                let mut history = Vec::new();
-                for row in rows {
-                    if let Ok(record) = row {
-                        history.push(record);
-                    }
-                }
-                Ok(history)
-            }
-            Err(e) => Err(e.to_string()),
+    let mut history = Vec::new();
+    for row in rows {
+        if let Ok(record) = row {
+            history.push(record);
         }
-    } else {
-        Err("Failed to get app data directory".to_string())
     }
+    Ok(history)
 }
 
 #[tauri::command]
-pub async fn get_run_operations(app: AppHandle, run_id: String) -> Result<Vec<PreviewOperation>, String> {
-    if let Ok(data_dir) = app.path().app_data_dir() {
-        let db_path = data_dir.join("organize.db");
-        match Connection::open(db_path) {
-            Ok(conn) => {
-                let mut stmt = conn.prepare(
-                    "SELECT rule_name, source_path, target_path, action, status 
-                     FROM history WHERE run_id = ?1"
-                ).map_err(|e| e.to_string())?;
-                
-                let rows = stmt.query_map([run_id], |row| {
-                    let source_path: String = row.get(1)?;
-                    let original_name = Path::new(&source_path)
-                        .file_name()
-                        .map(|n: &std::ffi::OsStr| n.to_string_lossy().to_string())
-                        .unwrap_or_default();
+pub async fn get_run_operations(app: AppHandle, run_id: String) -> Result<Vec<PreviewOperation>, AppError> {
+    let data_dir = app.path().app_data_dir()?;
+    let db_path = data_dir.join("organize.db");
+    let conn = Connection::open(db_path)?;
+    
+    let mut stmt = conn.prepare(
+        "SELECT rule_name, source_path, target_path, action, status 
+         FROM history WHERE run_id = ?1"
+    )?;
+    
+    let rows = stmt.query_map([run_id], |row| {
+        let source_path: String = row.get(1)?;
+        let original_name = Path::new(&source_path)
+            .file_name()
+            .map(|n: &std::ffi::OsStr| n.to_string_lossy().to_string())
+            .unwrap_or_default();
 
-                    Ok(PreviewOperation {
-                        rule_name: row.get(0)?,
-                        original_path: source_path,
-                        original_name,
-                        suggested_action: row.get(3)?,
-                        suggested_target: row.get(2)?,
-                        conflict_strategy: "unknown".to_string(), // Not stored in history currently
-                        status: row.get(4)?,
-                        error_message: None, // Could potentially store this in history v5 if needed
-                    })
-                }).map_err(|e| e.to_string())?;
+        Ok(PreviewOperation {
+            rule_name: row.get(0)?,
+            original_path: source_path,
+            original_name,
+            suggested_action: row.get(3)?,
+            suggested_target: row.get(2)?,
+            conflict_strategy: "unknown".to_string(), // Not stored in history currently
+            status: row.get(4)?,
+            error_message: None, 
+        })
+    })?;
 
-                let mut ops = Vec::new();
-                for row in rows {
-                    if let Ok(op) = row {
-                        ops.push(op);
-                    }
-                }
-                Ok(ops)
-            }
-            Err(e) => Err(e.to_string()),
+    let mut ops = Vec::new();
+    for row in rows {
+        if let Ok(op) = row {
+            ops.push(op);
         }
-    } else {
-        Err("Failed to get app data directory".to_string())
     }
+    Ok(ops)
 }
 
 #[derive(Clone, Serialize)]
@@ -212,18 +198,17 @@ pub struct UndoResult {
 }
 
 #[tauri::command]
-pub async fn undo_run(app: AppHandle, run_id: String) -> Result<Vec<UndoResult>, String> {
+pub async fn undo_run(app: AppHandle, run_id: String) -> Result<Vec<UndoResult>, AppError> {
     let mut results = Vec::new();
-
-    if let Ok(data_dir) = app.path().app_data_dir() {
-        let db_path = data_dir.join("organize.db");
-        match Connection::open(db_path) {
-            Ok(conn) => {
-                // Fetch successful operations for this run
-                let mut stmt = conn.prepare(
-                    "SELECT id, source_path, target_path, action, status 
-                     FROM history WHERE run_id = ?1 AND (status = 'success' OR status = 'executed')"
-                ).map_err(|e| e.to_string())?;
+    let data_dir = app.path().app_data_dir()?;
+    let db_path = data_dir.join("organize.db");
+    let conn = Connection::open(db_path)?;
+    
+    // Fetch successful operations for this run
+    let mut stmt = conn.prepare(
+        "SELECT id, source_path, target_path, action, status 
+         FROM history WHERE run_id = ?1 AND (status = 'success' OR status = 'executed')"
+    )?;
                 
                 struct HistoryRecord {
                     id: String,
@@ -239,7 +224,7 @@ pub async fn undo_run(app: AppHandle, run_id: String) -> Result<Vec<UndoResult>,
                         target_path: row.get(2)?,
                         action: row.get(3)?,
                     })
-                }).map_err(|e| e.to_string())?;
+                })?;
 
                 let records: Vec<HistoryRecord> = rows.filter_map(|r| r.ok()).collect();
                 let total = records.len();
@@ -305,81 +290,56 @@ pub async fn undo_run(app: AppHandle, run_id: String) -> Result<Vec<UndoResult>,
                     });
                 }
                 
-                let _ = app.emit("run-complete", run_id);
                 Ok(results)
-            }
-            Err(e) => Err(e.to_string()),
-        }
+}
+
+#[tauri::command]
+pub async fn get_setting(app: AppHandle, key: String) -> Result<Option<String>, AppError> {
+    let data_dir = app.path().app_data_dir()?;
+    let db_path = data_dir.join("organize.db");
+    let conn = Connection::open(db_path)?;
+    
+    let mut stmt = conn.prepare("SELECT value FROM settings WHERE key = ?1")?;
+    let mut rows = stmt.query([key])?;
+    
+    if let Some(row) = rows.next()? {
+        let value: String = row.get(0)?;
+        Ok(Some(value))
     } else {
-        Err("Failed to get app data directory".to_string())
+        Ok(None)
     }
 }
 
 #[tauri::command]
-pub async fn get_setting(app: AppHandle, key: String) -> Result<Option<String>, String> {
-    if let Ok(data_dir) = app.path().app_data_dir() {
-        let db_path = data_dir.join("organize.db");
-        match Connection::open(db_path) {
-            Ok(conn) => {
-                let mut stmt = conn.prepare("SELECT value FROM settings WHERE key = ?1").map_err(|e| e.to_string())?;
-                let mut rows = stmt.query([key]).map_err(|e| e.to_string())?;
-                
-                if let Ok(Some(row)) = rows.next() {
-                    let value: String = row.get(0).map_err(|e| e.to_string())?;
-                    Ok(Some(value))
-                } else {
-                    Ok(None)
-                }
-            }
-            Err(e) => Err(e.to_string()),
-        }
-    } else {
-        Err("Failed to get app data directory".to_string())
-    }
+pub async fn set_setting(app: AppHandle, key: String, value: String) -> Result<(), AppError> {
+    let data_dir = app.path().app_data_dir()?;
+    let db_path = data_dir.join("organize.db");
+    let conn = Connection::open(db_path)?;
+    
+    conn.execute(
+        "INSERT INTO settings (key, value) VALUES (?1, ?2) 
+         ON CONFLICT(key) DO UPDATE SET value = ?2",
+        [&key, &value]
+    )?;
+    Ok(())
 }
 
 #[tauri::command]
-pub async fn set_setting(app: AppHandle, key: String, value: String) -> Result<(), String> {
-    if let Ok(data_dir) = app.path().app_data_dir() {
-        let db_path = data_dir.join("organize.db");
-        match Connection::open(db_path) {
-            Ok(conn) => {
-                conn.execute(
-                    "INSERT INTO settings (key, value) VALUES (?1, ?2) 
-                     ON CONFLICT(key) DO UPDATE SET value = ?2",
-                    [&key, &value]
-                ).map_err(|e| e.to_string())?;
-                Ok(())
-            }
-            Err(e) => Err(e.to_string()),
+pub async fn get_all_settings(app: AppHandle) -> Result<HashMap<String, String>, AppError> {
+    let data_dir = app.path().app_data_dir()?;
+    let db_path = data_dir.join("organize.db");
+    let conn = Connection::open(db_path)?;
+    
+    let mut stmt = conn.prepare("SELECT key, value FROM settings")?;
+    let rows = stmt.query_map([], |row| {
+        Ok((row.get(0)?, row.get(1)?))
+    })?;
+    
+    let mut settings = HashMap::new();
+    for row in rows {
+        if let Ok((k, v)) = row {
+            settings.insert(k, v);
         }
-    } else {
-        Err("Failed to get app data directory".to_string())
     }
-}
-
-#[tauri::command]
-pub async fn get_all_settings(app: AppHandle) -> Result<HashMap<String, String>, String> {
-    if let Ok(data_dir) = app.path().app_data_dir() {
-        let db_path = data_dir.join("organize.db");
-        match Connection::open(db_path) {
-            Ok(conn) => {
-                let mut stmt = conn.prepare("SELECT key, value FROM settings").map_err(|e| e.to_string())?;
-                let rows = stmt.query_map([], |row| {
-                    Ok((row.get(0)?, row.get(1)?))
-                }).map_err(|e| e.to_string())?;
-                
-                let mut settings = HashMap::new();
-                for row in rows {
-                    if let Ok((k, v)) = row {
-                        settings.insert(k, v);
-                    }
-                }
-                Ok(settings)
-            }
-            Err(e) => Err(e.to_string()),
-        }
-    } else {
-        Err("Failed to get app data directory".to_string())
-    }
+    Ok(settings)
 }

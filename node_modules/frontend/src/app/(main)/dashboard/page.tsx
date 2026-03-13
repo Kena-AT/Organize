@@ -18,6 +18,7 @@ import { ipcService } from "@/services/ipcService";
 import { Rule, PreviewOperation } from "@/types";
 import { Tooltip } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
+import { Skeleton } from "@/components/ui/skeleton";
 
 interface ProgressInfo {
   current: number;
@@ -87,8 +88,9 @@ export default function DashboardPage() {
       const dest = destinationFolder || sourceFolder;
       const results = await ipcService.getPreview(sourceFolder, dest, rules);
       setPreview(results);
-    } catch (err) {
-      setError("Failed to scan folder. Make sure the path is correct and accessible.");
+    } catch (err: unknown) {
+      const errorMsg = err instanceof Error ? err.message : String(err);
+      setError(errorMsg || "Failed to scan folder. Make sure the path is correct and accessible.");
       console.error(err);
     } finally {
       setIsScanning(false);
@@ -120,8 +122,9 @@ export default function DashboardPage() {
       const errorCount = results.filter((r: PreviewOperation) => r.status === 'error').length;
       
       setSuccess(`Successfully processed ${successCount} files. ${errorCount > 0 ? `${errorCount} errors occurred.` : ''}`);
-    } catch (err) {
-      setError("Failed to execute operations. Check file permissions.");
+    } catch (err: unknown) {
+      const errorMsg = err instanceof Error ? err.message : String(err);
+      setError(errorMsg || "Failed to execute operations. Check file permissions.");
       console.error(err);
     } finally {
       setIsExecuting(false);
@@ -331,11 +334,11 @@ export default function DashboardPage() {
             <div className="grid grid-cols-2 gap-3">
               <div className="p-4 rounded-2xl bg-white/5 border border-white/5">
                 <p className="text-[10px] font-bold text-zinc-500 uppercase">Found</p>
-                <p className="text-xl font-bold text-white mt-1">{stats.total}</p>
+                {isScanning ? <Skeleton className="h-6 w-12 mt-1" /> : <p className="text-xl font-bold text-white mt-1">{stats.total}</p>}
               </div>
               <div className="p-4 rounded-2xl bg-indigo-500/5 border border-indigo-500/10">
                 <p className="text-[10px] font-bold text-indigo-400 uppercase">Organize</p>
-                <p className="text-xl font-bold text-white mt-1">{stats.toMove + stats.toCopy + stats.toDelete}</p>
+                {isScanning ? <Skeleton className="h-6 w-12 mt-1" /> : <p className="text-xl font-bold text-white mt-1">{stats.toMove + stats.toCopy + stats.toDelete}</p>}
               </div>
             </div>
           </div>
@@ -364,57 +367,67 @@ export default function DashboardPage() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-white/5">
-                    {preview.map((op, idx) => (
-                      <tr key={idx} className="group hover:bg-white/2 transition-colors">
-                        <td className="px-6 py-4">
-                          <div className="flex flex-col">
-                            <span className="text-sm font-medium text-zinc-200 truncate max-w-[200px]" title={op.original_path}>
-                              {op.original_name}
+                    {isScanning ? (
+                      [1, 2, 3, 4, 5].map((i) => (
+                        <tr key={i}>
+                          <td className="px-6 py-4"><Skeleton className="h-10 w-full" /></td>
+                          <td className="px-6 py-4"><Skeleton className="h-6 w-16" /></td>
+                          <td className="px-6 py-4"><Skeleton className="h-6 w-32" /></td>
+                        </tr>
+                      ))
+                    ) : (
+                      preview.map((op, idx) => (
+                        <tr key={idx} className="group hover:bg-white/2 transition-colors">
+                          <td className="px-6 py-4">
+                            <div className="flex flex-col">
+                              <span className="text-sm font-medium text-zinc-200 truncate max-w-[200px]" title={op.original_path}>
+                                {op.original_name}
+                              </span>
+                              <span className="text-[10px] font-bold text-indigo-500/70">{op.rule_name}</span>
+                            </div>
+                          </td>
+                          <td className="px-6 py-4">
+                            <span className={cn(
+                              "px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase tracking-tight border",
+                              op.suggested_action === 'move' && "bg-indigo-500/10 text-indigo-400 border-indigo-500/20",
+                              op.suggested_action === 'copy' && "bg-green-500/10 text-green-400 border-green-500/20",
+                              op.suggested_action === 'delete' && "bg-red-500/10 text-red-400 border-red-500/20",
+                              op.suggested_action === 'skip' && "bg-zinc-500/10 text-zinc-500 border-zinc-500/20",
+                            )}>
+                              {op.suggested_action}
                             </span>
-                            <span className="text-[10px] font-bold text-indigo-500/70">{op.rule_name}</span>
-                          </div>
-                        </td>
-                        <td className="px-6 py-4">
-                          <span className={cn(
-                            "px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase tracking-tight border",
-                            op.suggested_action === 'move' && "bg-indigo-500/10 text-indigo-400 border-indigo-500/20",
-                            op.suggested_action === 'copy' && "bg-green-500/10 text-green-400 border-green-500/20",
-                            op.suggested_action === 'delete' && "bg-red-500/10 text-red-400 border-red-500/20",
-                            op.suggested_action === 'skip' && "bg-zinc-500/10 text-zinc-500 border-zinc-500/20",
-                          )}>
-                            {op.suggested_action}
-                          </span>
-                        </td>
-                        <td className="px-6 py-4">
-                           <div className="flex flex-col gap-1">
-                              {op.suggested_target ? (
-                                <div className="flex items-center gap-2 text-zinc-400 text-xs font-medium">
-                                  <ArrowRight className="h-3 w-3 text-indigo-500/50" />
-                                  <span className="truncate max-w-[150px]" title={op.suggested_target}>
-                                    {op.suggested_target.split(/[\\/]/).pop()}
-                                  </span>
-                                </div>
-                              ) : (
-                                <span className="text-[10px] italic text-zinc-700 font-medium tracking-tight">No change</span>
-                              )}
-                              
-                              {op.status === 'success' && (
-                                <div className="flex items-center gap-1 text-[10px] font-bold text-green-500 uppercase tracking-tight">
-                                  <CheckCircle2 className="h-3 w-3" />
-                                  Executed
-                                </div>
-                              )}
-                              
-                              {op.status.startsWith('error') && (
-                                <div className="flex items-center gap-1 text-[10px] font-bold text-red-500 uppercase tracking-tight">
-                                  <AlertCircle className="h-3 w-3" />
-                                  Failed
-                                </div>
-                              )}
-                           </div>
-                        </td>
-                      </tr>
-                    ))}
+                          </td>
+                          <td className="px-6 py-4">
+                            <div className="flex flex-col gap-1">
+                                {op.suggested_target ? (
+                                  <div className="flex items-center gap-2 text-zinc-400 text-xs font-medium">
+                                    <ArrowRight className="h-3 w-3 text-indigo-500/50" />
+                                    <span className="truncate max-w-[150px]" title={op.suggested_target}>
+                                      {op.suggested_target.split(/[\\/]/).pop()}
+                                    </span>
+                                  </div>
+                                ) : (
+                                  <span className="text-[10px] italic text-zinc-700 font-medium tracking-tight">No change</span>
+                                )}
+                                
+                                {op.status === 'success' && (
+                                  <div className="flex items-center gap-1 text-[10px] font-bold text-green-500 uppercase tracking-tight">
+                                    <CheckCircle2 className="h-3 w-3" />
+                                    Executed
+                                  </div>
+                                )}
+                                
+                                {op.status.startsWith('error') && (
+                                  <div className="flex items-center gap-1 text-[10px] font-bold text-red-500 uppercase tracking-tight">
+                                    <AlertCircle className="h-3 w-3" />
+                                    Failed
+                                  </div>
+                                )}
+                            </div>
+                          </td>
+                        </tr>
+                      ))
+                    )}
                   </tbody>
                 </table>
               ) : (
