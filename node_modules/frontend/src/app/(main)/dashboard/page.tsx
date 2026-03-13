@@ -95,7 +95,11 @@ export default function DashboardPage() {
         conflict_strategy: conflictStrategy
       }));
       
-      const results = await ipcService.runOrganization(opsToRun);
+      const results = await ipcService.runOrganization(
+        opsToRun, 
+        sourceFolder, 
+        destinationFolder || sourceFolder
+      );
       setPreview(results);
       
       const successCount = results.filter((r: PreviewOperation) => r.status === 'success').length;

@@ -1,6 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import Database from "@tauri-apps/plugin-sql";
-import { Rule, PreviewOperation } from "@/types";
+import { Rule, PreviewOperation, RunRecord } from "@/types";
 
 export const ipcService = {
   ping: async (): Promise<string> => {
@@ -80,12 +80,38 @@ export const ipcService = {
     }
   },
 
-  runOrganization: async (operations: PreviewOperation[]): Promise<PreviewOperation[]> => {
+  runOrganization: async (
+    operations: PreviewOperation[], 
+    sourceFolder: string, 
+    destinationFolder: string
+  ): Promise<PreviewOperation[]> => {
     try {
-      return await invoke<PreviewOperation[]>("run_organization", { operations });
+      return await invoke<PreviewOperation[]>("run_organization", { 
+        operations, 
+        sourceFolder, 
+        destinationFolder 
+      });
     } catch (error) {
       console.error("Error running organization:", error);
       throw error;
+    }
+  },
+
+  getHistory: async (): Promise<RunRecord[]> => {
+    try {
+      return await invoke<RunRecord[]>("get_history");
+    } catch (error) {
+      console.error("Error getting history:", error);
+      return [];
+    }
+  },
+
+  getRunOperations: async (runId: string): Promise<PreviewOperation[]> => {
+    try {
+      return await invoke<PreviewOperation[]>("get_run_operations", { runId });
+    } catch (error) {
+      console.error("Error getting run operations:", error);
+      return [];
     }
   },
 

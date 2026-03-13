@@ -3,6 +3,7 @@ use crate::scanner::{Scanner, Rule, PreviewOperation};
 use rusqlite::Connection;
 use uuid::Uuid;
 use serde::Serialize;
+use std::path::Path;
 
 #[derive(Clone, Serialize)]
 struct ProgressPayload {
@@ -22,8 +23,24 @@ pub async fn get_preview(folder_path: String, destination_path: String, rules: V
     Ok(Scanner::scan_folder(&folder_path, &destination_path, rules))
 }
 
+#[derive(Clone, Serialize)]
+pub struct RunRecord {
+    pub id: String,
+    pub timestamp: String,
+    pub total_files: usize,
+    pub success_count: usize,
+    pub error_count: usize,
+    pub source_folder: String,
+    pub destination_folder: String,
+}
+
 #[tauri::command]
-pub async fn run_organization(app: AppHandle, operations: Vec<PreviewOperation>) -> Result<Vec<PreviewOperation>, String> {
+pub async fn run_organization(
+    app: AppHandle, 
+    operations: Vec<PreviewOperation>,
+    source_folder: String,
+    destination_folder: String
+) -> Result<Vec<PreviewOperation>, String> {
     let run_id = Uuid::new_v4().to_string();
     let app_handle = app.clone();
     
@@ -37,28 +54,43 @@ pub async fn run_organization(app: AppHandle, operations: Vec<PreviewOperation>)
         });
     });
 
-    // Logging to history table
-    // Note: tauri-plugin-sql usually puts its DBs in the app data directory
+    let success_count = results.iter().filter(|op| op.status == "success").count();
+    let error_count = results.iter().filter(|op| op.status == "error").count();
+
+    // Logging to history and runs table
     if let Ok(data_dir) = app.path().app_data_dir() {
         let db_path = data_dir.join("organize.db");
         
         if let Ok(conn) = Connection::open(db_path) {
+            // Log the Run
+            let _ = conn.execute(
+                "INSERT INTO runs (id, total_files, success_count, error_count, source_folder, destination_folder) 
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+                (
+                    &run_id,
+                    results.len(),
+                    success_count,
+                    error_count,
+                    &source_folder,
+                    &destination_folder,
+                ),
+            );
+
+            // Log individual operations
             for op in &results {
-                if op.status == "success" {
-                    let _ = conn.execute(
-                        "INSERT INTO history (id, run_id, source_path, target_path, action, rule_name, status) 
-                         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
-                        (
-                            Uuid::new_v4().to_string(),
-                            &run_id,
-                            &op.original_path,
-                            &op.suggested_target,
-                            &op.suggested_action,
-                            &op.rule_name,
-                            "executed",
-                        ),
-                    );
-                }
+                let _ = conn.execute(
+                    "INSERT INTO history (id, run_id, source_path, target_path, action, rule_name, status) 
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+                    (
+                        Uuid::new_v4().to_string(),
+                        &run_id,
+                        &op.original_path,
+                        &op.suggested_target,
+                        &op.suggested_action,
+                        &op.rule_name,
+                        &op.status,
+                    ),
+                );
             }
         }
     }
@@ -67,4 +99,87 @@ pub async fn run_organization(app: AppHandle, operations: Vec<PreviewOperation>)
     let _ = app.emit("run-complete", run_id);
 
     Ok(results)
+}
+
+#[tauri::command]
+pub async fn get_history(app: AppHandle) -> Result<Vec<RunRecord>, String> {
+    if let Ok(data_dir) = app.path().app_data_dir() {
+        let db_path = data_dir.join("organize.db");
+        match Connection::open(db_path) {
+            Ok(conn) => {
+                let mut stmt = conn.prepare(
+                    "SELECT id, timestamp, total_files, success_count, error_count, source_folder, destination_folder 
+                     FROM runs ORDER BY timestamp DESC LIMIT 50"
+                ).map_err(|e| e.to_string())?;
+                
+                let rows = stmt.query_map([], |row| {
+                    Ok(RunRecord {
+                        id: row.get(0)?,
+                        timestamp: row.get(1)?,
+                        total_files: row.get(2)?,
+                        success_count: row.get(3)?,
+                        error_count: row.get(4)?,
+                        source_folder: row.get(5)?,
+                        destination_folder: row.get(6)?,
+                    })
+                }).map_err(|e| e.to_string())?;
+
+                let mut history = Vec::new();
+                for row in rows {
+                    if let Ok(record) = row {
+                        history.push(record);
+                    }
+                }
+                Ok(history)
+            }
+            Err(e) => Err(e.to_string()),
+        }
+    } else {
+        Err("Failed to get app data directory".to_string())
+    }
+}
+
+#[tauri::command]
+pub async fn get_run_operations(app: AppHandle, run_id: String) -> Result<Vec<PreviewOperation>, String> {
+    if let Ok(data_dir) = app.path().app_data_dir() {
+        let db_path = data_dir.join("organize.db");
+        match Connection::open(db_path) {
+            Ok(conn) => {
+                let mut stmt = conn.prepare(
+                    "SELECT rule_name, source_path, target_path, action, status 
+                     FROM history WHERE run_id = ?1"
+                ).map_err(|e| e.to_string())?;
+                
+                let rows = stmt.query_map([run_id], |row| {
+                    let source_path: String = row.get(1)?;
+                    let original_name = Path::new(&source_path)
+                        .file_name()
+                        .map(|n: &std::ffi::OsStr| n.to_string_lossy().to_string())
+                        .unwrap_or_default();
+
+                    Ok(PreviewOperation {
+                        rule_name: row.get(0)?,
+                        original_path: source_path,
+                        original_name,
+                        suggested_action: row.get(3)?,
+                        suggested_target: row.get(2)?,
+                        conflict_strategy: "unknown".to_string(), // Not stored in history currently
+                        status: row.get(4)?,
+                        error_message: None, // Could potentially store this in history v5 if needed
+                    })
+                }).map_err(|e| e.to_string())?;
+
+                let mut ops = Vec::new();
+                for row in rows {
+                    if let Ok(op) = row {
+                        ops.push(op);
+                    }
+                }
+                Ok(ops)
+            }
+            Err(e) => Err(e.to_string()),
+        }
+    } else {
+        Err("Failed to get app data directory".to_string())
+    }
 }

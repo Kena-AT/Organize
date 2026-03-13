@@ -24,3 +24,13 @@ export interface PreviewOperation {
   status: "pending" | "success" | "error" | "skipped";
   error_message?: string;
 }
+
+export interface RunRecord {
+  id: string;
+  timestamp: string;
+  total_files: number;
+  success_count: number;
+  error_count: number;
+  source_folder: string;
+  destination_folder: string;
+}

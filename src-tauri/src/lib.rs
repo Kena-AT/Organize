@@ -40,6 +40,20 @@ pub fn run() {
                 status TEXT
             );",
             kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 4,
+            description: "create runs table",
+            sql: "CREATE TABLE IF NOT EXISTS runs (
+                id TEXT PRIMARY KEY,
+                timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+                total_files INTEGER,
+                success_count INTEGER,
+                error_count INTEGER,
+                source_folder TEXT,
+                destination_folder TEXT
+            );",
+            kind: MigrationKind::Up,
         }
     ];
 
@@ -54,7 +68,9 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             commands::ping,
             commands::get_preview,
-            commands::run_organization
+            commands::run_organization,
+            commands::get_history,
+            commands::get_run_operations
         ])
         .setup(|_app| Ok(()))
         .run(tauri::generate_context!())
