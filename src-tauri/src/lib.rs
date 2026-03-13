@@ -9,6 +9,21 @@ pub fn run() {
             description: "create settings table",
             sql: "CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT);",
             kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 2,
+            description: "create rules table",
+            sql: "CREATE TABLE IF NOT EXISTS rules (
+                id TEXT PRIMARY KEY,
+                name TEXT,
+                condition_type TEXT,
+                condition_value TEXT,
+                action_type TEXT,
+                action_target TEXT,
+                status TEXT DEFAULT 'active',
+                priority INTEGER
+            );",
+            kind: MigrationKind::Up,
         }
     ];
 

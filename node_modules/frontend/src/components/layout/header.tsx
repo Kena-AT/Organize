@@ -22,10 +22,6 @@ export function Header() {
       </div>
 
       <div className="flex items-center gap-4">
-        <button className="relative rounded-xl border border-white/5 bg-white/5 p-2.5 text-zinc-400 transition-colors hover:text-white hover:bg-white/[0.07]">
-          <Bell className="h-5 w-5" />
-          <span className="absolute right-2 top-2 h-2 w-2 rounded-full bg-indigo-500 border-2 border-[#0B0B13]" />
-        </button>
         
         <div className="flex items-center gap-3 pl-2 border-l border-white/10">
           <div className="text-right">

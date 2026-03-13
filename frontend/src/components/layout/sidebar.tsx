@@ -64,20 +64,6 @@ export function Sidebar() {
           );
         })}
       </nav>
-
-      <div className="absolute bottom-6 left-6 right-6">
-        <div className="rounded-2xl border border-white/5 bg-white/5 p-4">
-          <div className="flex items-center gap-3">
-            <div className="h-10 w-10 rounded-full bg-linear-to-br from-indigo-500 to-violet-600 flex items-center justify-center font-bold text-white">
-              AR
-            </div>
-            <div>
-              <p className="text-sm font-bold text-white">Alex Rivera</p>
-              <p className="text-[10px] text-zinc-500 uppercase tracking-wider">Pro Account</p>
-            </div>
-          </div>
-        </div>
-      </div>
     </aside>
   );
 }
