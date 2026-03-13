@@ -1,96 +1,55 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import Image from "next/image";
 import { ipcService } from "@/services/ipcService";
 
 export default function Home() {
-  const [pingResponse, setPingResponse] = useState<string>("");
-  const [loading, setLoading] = useState(true);
   const router = useRouter();
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     const checkOnboarding = async () => {
-      const completed = await ipcService.getOnboardingStatus();
-      if (!completed) {
-        router.push("/welcome");
-      } else {
-        setLoading(false);
+      try {
+        const isCompleted = await ipcService.getOnboardingStatus();
+        if (isCompleted) {
+          router.push("/dashboard");
+        } else {
+          router.push("/welcome");
+        }
+      } catch (err) {
+        console.error("Failed to check onboarding status:", err);
+        setError("Please ensure the desktop application is running properly.");
       }
     };
+
     checkOnboarding();
   }, [router]);
 
-  const handlePing = async () => {
-    try {
-      const response = await ipcService.ping();
-      setPingResponse(response);
-    } catch {
-      setPingResponse("Error connecting to backend");
-    }
-  };
-
-  const handleReset = async () => {
-    // Hidden reset helper for testing
-    const Database = (await import("@tauri-apps/plugin-sql")).default;
-    const db = await Database.load("sqlite:organize.db");
-    await db.execute("DELETE FROM settings WHERE key = 'onboarding_completed'");
-    window.location.reload();
-  };
-
-  if (loading) {
+  if (error) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-[#0B0B13]">
-        <div className="h-8 w-8 animate-spin rounded-full border-4 border-indigo-600 border-t-transparent" />
+      <div className="flex min-h-screen items-center justify-center bg-[#0B0B13] p-8 text-center text-white">
+        <div className="max-w-md space-y-4">
+          <div className="text-4xl mb-6">⚠️</div>
+          <h1 className="text-xl font-bold">Connection Error</h1>
+          <p className="text-zinc-500 text-sm leading-relaxed">{error}</p>
+          <button 
+            onClick={() => window.location.reload()}
+            className="mt-6 rounded-xl bg-indigo-600 px-6 py-3 text-sm font-bold transition-all hover:bg-indigo-500"
+          >
+            Retry Connection
+          </button>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex min-h-screen w-full max-w-3xl flex-col items-center justify-center py-32 px-16 bg-white dark:bg-black">
-        <div className="flex flex-col items-center gap-8 text-center">
-          <Image
-            className="dark:invert mb-4"
-            src="/next.svg"
-            alt="Next.js logo"
-            width={180}
-            height={37}
-            priority
-          />
-          
-          <h1 className="text-4xl font-bold tracking-tight text-black dark:text-zinc-50">
-            Dashboard
-          </h1>
-          
-          <p className="max-w-md text-lg text-zinc-600 dark:text-zinc-400">
-            Welcome to your Dashboard. Onboarding is complete.
-          </p>
-
-          <div className="mt-8 flex flex-col items-center gap-4">
-            <button
-              onClick={handlePing}
-              className="flex h-12 items-center justify-center rounded-full bg-black px-8 text-sm font-medium text-white transition-colors hover:bg-zinc-800 dark:bg-white dark:text-black dark:hover:bg-zinc-200"
-            >
-              Test Backend (Ping)
-            </button>
-            
-            {pingResponse && (
-              <p className="text-sm font-mono text-zinc-500 dark:text-zinc-400">
-                Backend says: <span className="font-bold text-green-600 dark:text-green-400">{pingResponse}</span>
-              </p>
-            )}
-
-            <button 
-              onClick={handleReset}
-              className="mt-12 text-xs text-zinc-500 hover:text-red-500 transition-colors"
-            >
-              Reset Onboarding (Debug)
-            </button>
-          </div>
-        </div>
-      </main>
+    <div className="flex min-h-screen items-center justify-center bg-[#0B0B13]">
+      <div className="flex flex-col items-center gap-4">
+        <div className="h-12 w-12 animate-spin rounded-full border-4 border-indigo-600 border-t-transparent" />
+        <p className="text-indigo-500 text-xs font-bold uppercase tracking-widest animate-pulse">Initializing Systems...</p>
+      </div>
     </div>
   );
 }

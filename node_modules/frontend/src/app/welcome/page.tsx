@@ -70,10 +70,7 @@ const WelcomeLayout = ({ children, step, totalSteps, onNext, onBack, onSkip }: {
           </div>
         </div>
 
-        {/* Branding Footer */}
-        <div className="mt-8 text-[10px] font-medium text-zinc-600">
-          Securely organizing 2M+ desktops worldwide.
-        </div>
+      
       </div>
     </div>
   );
