@@ -20,5 +20,7 @@ export interface PreviewOperation {
   original_name: string;
   suggested_action: string;
   suggested_target: string;
+  conflict_strategy: "skip" | "rename" | "replace";
   status: "pending" | "success" | "error" | "skipped";
+  error_message?: string;
 }

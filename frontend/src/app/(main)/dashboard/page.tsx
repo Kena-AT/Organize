@@ -13,10 +13,18 @@ import {
   Rocket,
   CheckCircle
 } from "lucide-react";
+import { listen } from "@tauri-apps/api/event";
 import { ipcService } from "@/services/ipcService";
 import { Rule, PreviewOperation } from "@/types";
 import { Tooltip } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
+
+interface ProgressInfo {
+  current: number;
+  total: number;
+  filename: string;
+  status: string;
+}
 
 export default function DashboardPage() {
   const [sourceFolder, setSourceFolder] = useState("");
@@ -27,9 +35,24 @@ export default function DashboardPage() {
   const [isExecuting, setIsExecuting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  const [progress, setProgress] = useState<ProgressInfo | null>(null);
+  const [conflictStrategy, setConflictStrategy] = useState<"skip" | "rename" | "replace">("rename");
 
   useEffect(() => {
     loadRules();
+    
+    const setupListeners = async () => {
+      const unlisten = await listen<ProgressInfo>("run-progress", (event) => {
+        setProgress(event.payload);
+      });
+      return unlisten;
+    };
+
+    const unlistenPromise = setupListeners();
+
+    return () => {
+      unlistenPromise.then(unlisten => unlisten());
+    };
   }, []);
 
   async function loadRules() {
@@ -61,17 +84,22 @@ export default function DashboardPage() {
   async function handleRunOrganization() {
     if (preview.length === 0) return;
     
-    // Filter out skipped items for actual execution? 
-    // No, the backend handles skip.
-    
     setIsExecuting(true);
     setError(null);
+    setProgress({ current: 0, total: preview.length, filename: "Preparing...", status: "pending" });
+    
     try {
-      const results = await ipcService.runOrganization(preview);
+      // Map conflict strategy to all operations
+      const opsToRun = preview.map(op => ({
+        ...op,
+        conflict_strategy: conflictStrategy
+      }));
+      
+      const results = await ipcService.runOrganization(opsToRun);
       setPreview(results);
       
       const successCount = results.filter((r: PreviewOperation) => r.status === 'success').length;
-      const errorCount = results.filter((r: PreviewOperation) => r.status.startsWith('error')).length;
+      const errorCount = results.filter((r: PreviewOperation) => r.status === 'error').length;
       
       setSuccess(`Successfully processed ${successCount} files. ${errorCount > 0 ? `${errorCount} errors occurred.` : ''}`);
     } catch (err) {
@@ -79,6 +107,7 @@ export default function DashboardPage() {
       console.error(err);
     } finally {
       setIsExecuting(false);
+      setProgress(null);
     }
   }
 
@@ -181,6 +210,26 @@ export default function DashboardPage() {
                 </div>
               </div>
 
+              <div className="space-y-2">
+                <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest px-1">Conflict Strategy</label>
+                <div className="grid grid-cols-3 gap-2">
+                  {(['skip', 'rename', 'replace'] as const).map((strategy) => (
+                    <button
+                      key={strategy}
+                      onClick={() => setConflictStrategy(strategy)}
+                      className={cn(
+                        "py-2 rounded-xl border text-[10px] font-bold uppercase tracking-tight transition-all",
+                        conflictStrategy === strategy 
+                          ? "bg-indigo-600 border-indigo-500 text-white shadow-lg shadow-indigo-500/20" 
+                          : "bg-white/5 border-white/5 text-zinc-500 hover:text-zinc-300 hover:bg-white/10"
+                      )}
+                    >
+                      {strategy}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
               {error && (
                 <div className="flex items-center gap-2 p-4 rounded-2xl bg-red-500/10 border border-red-500/20 text-red-400 text-xs animate-in slide-in-from-top-2">
                   <AlertCircle className="h-4 w-4" />
@@ -215,23 +264,45 @@ export default function DashboardPage() {
                 </button>
 
                 {preview.length > 0 && (
-                  <button 
-                    onClick={handleRunOrganization}
-                    disabled={isExecuting || isScanning || stats.toMove + stats.toCopy + stats.toDelete === 0}
-                    className="w-full flex items-center justify-center gap-3 rounded-2xl bg-indigo-600 px-6 py-4 text-sm font-bold text-white shadow-[0_0_20px_rgba(79,70,229,0.3)] hover:bg-indigo-500 transition-all active:scale-[0.98] disabled:opacity-50 disabled:grayscale animate-in zoom-in duration-300"
-                  >
-                    {isExecuting ? (
-                      <>
-                        <div className="h-4 w-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                        Organizing...
-                      </>
-                    ) : (
-                      <>
-                        <Rocket className="h-4 w-4" />
-                        Run Organization
-                      </>
+                  <div className="space-y-4 pt-2">
+                    {isExecuting && progress && (
+                      <div className="space-y-2 animate-in fade-in slide-in-from-bottom-2 duration-300">
+                        <div className="flex justify-between items-end px-1">
+                          <div className="space-y-0.5">
+                            <p className="text-[10px] font-bold text-indigo-400 uppercase tracking-widest">Organizing In Progress</p>
+                            <p className="text-[10px] text-zinc-500 max-w-[180px] truncate">{progress.filename}</p>
+                          </div>
+                          <span className="text-[10px] font-bold text-white mb-0.5">
+                            {Math.round((progress.current / progress.total) * 100)}%
+                          </span>
+                        </div>
+                        <div className="h-1.5 w-full bg-white/5 rounded-full overflow-hidden">
+                          <div 
+                            className="h-full bg-indigo-500 transition-all duration-300 ease-out" 
+                            style={{ width: `${(progress.current / progress.total) * 100}%` }}
+                          />
+                        </div>
+                      </div>
                     )}
-                  </button>
+
+                    <button 
+                      onClick={handleRunOrganization}
+                      disabled={isExecuting || isScanning || stats.toMove + stats.toCopy + stats.toDelete === 0}
+                      className="w-full flex items-center justify-center gap-3 rounded-2xl bg-indigo-600 px-6 py-4 text-sm font-bold text-white shadow-[0_0_20px_rgba(79,70,229,0.3)] hover:bg-indigo-500 transition-all active:scale-[0.98] disabled:opacity-50 disabled:grayscale animate-in zoom-in duration-300"
+                    >
+                      {isExecuting ? (
+                        <>
+                          <div className="h-4 w-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                          Processing {progress?.current}/{progress?.total}
+                        </>
+                      ) : (
+                        <>
+                          <Rocket className="h-4 w-4" />
+                          Run Organization
+                        </>
+                      )}
+                    </button>
+                  </div>
                 )}
               </div>
             </div>
