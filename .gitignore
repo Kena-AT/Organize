@@ -40,14 +40,16 @@ Thumbs.db
 *.db-shm
 *.db-wal
 
-# Temporary & Document Files
-*.tmp
-/tmp/
+# Documents
 *.docx
 *.doc
-*~$*.docx
+*.tmp
 *.pen
 *.swp
+
+# Word temp
+~$*.docx
+~$*.xlsx
 
 # IDEs
 .vscode/
@@ -58,10 +60,5 @@ Thumbs.db
 *.sln
 *.sw?
 
-# Microsoft Word temp files
-~$*.docx
-~$*.xlsx
-
 # Non-code project files (reference material)
 Designs/
-*.docx
