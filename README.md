@@ -17,8 +17,8 @@
 
 Grab the latest production installer for Windows:
 
-- [**Download EXE Installer** (Recommended)](src-tauri/target/release/bundle/nsis/organize_0.1.0_x64-setup.exe)
-- [**Download MSI Installer**](src-tauri/target/release/bundle/msi/organize_0.1.0_x64_en-US.msi)
+- [**Download EXE Installer** (Recommended)](src-tauri/builds/organize_0.1.0_x64-setup.exe)
+- [**Download MSI Installer**](src-tauri/builds/organize_0.1.0_x64_en-US.msi)
 
 ## 🛠️ Getting Started (Development)
 
