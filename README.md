@@ -32,6 +32,7 @@ Grab the latest production installer for Windows:
 
 1. Clone the repository.
 2. Install dependencies:
+
    ```bash
    npm install
    npm --prefix frontend install
@@ -52,5 +53,5 @@ npm run tauri build
 
 - **Frontend**: React 19 / Next.js 16 (Static Export)
 - **Backend**: Rust (Tauri v2)
-- **Database**: SQLite (Stored in `%APPDATA%/com.organize.app`)
+- **Database**: SQLite 
 - **Styling**: Tailwind CSS
