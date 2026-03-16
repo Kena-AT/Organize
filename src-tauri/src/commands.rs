@@ -22,6 +22,10 @@ pub fn ping() -> String {
 
 #[tauri::command]
 pub async fn get_preview(app: AppHandle, folder_path: String, destination_path: String, rules: Vec<Rule>) -> Result<Vec<PreviewOperation>, AppError> {
+    if !is_safe_path(&folder_path) || !is_safe_path(&destination_path) {
+        return Err(AppError::Path("Security violation: Restricted or invalid path.".to_string()));
+    }
+
     let mut protected_folders: Vec<String> = Vec::new();
     
     let data_dir = app.path().app_data_dir()?;
@@ -59,6 +63,14 @@ pub async fn run_organization(
     source_folder: String,
     destination_folder: String
 ) -> Result<Vec<PreviewOperation>, AppError> {
+    if !is_safe_path(&source_folder) || !is_safe_path(&destination_folder) {
+        return Err(AppError::Path("Security violation: Restricted or invalid path.".to_string()));
+    }
+    
+    // Max file operation limit per run (Security Hardening)
+    if operations.len() > 100_000 {
+        return Err(AppError::Generic("Security violation: Exceeded maximum allowed operations (100,000) per run.".to_string()));
+    }
     let run_id = Uuid::new_v4().to_string();
     let app_handle = app.clone();
     
@@ -342,4 +354,36 @@ pub async fn get_all_settings(app: AppHandle) -> Result<HashMap<String, String>,
         }
     }
     Ok(settings)
+}
+
+fn is_safe_path(path_str: &str) -> bool {
+    let path = Path::new(path_str);
+    
+    // Must be absolute
+    if !path.is_absolute() {
+        return false;
+    }
+    
+    // Prevent obvious path traversal components from strings
+    if path_str.contains("..") {
+        return false;
+    }
+
+    let lower_path = path_str.to_lowercase();
+    
+    // Restrict system directories
+    let restricted_prefixes = [
+        "c:\\windows",
+        "c:\\program files",
+        "c:\\program files (x86)",
+        "\\appdata", // Catch variations like roaming/local
+    ];
+
+    for restricted in restricted_prefixes {
+        if lower_path.contains(restricted) {
+            return false;
+        }
+    }
+
+    true
 }

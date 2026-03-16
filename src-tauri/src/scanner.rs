@@ -97,6 +97,8 @@ impl Scanner {
     where F: FnMut(usize, usize, String, String) {
         let mut results = Vec::new();
         let total = operations.len();
+        let mut consecutive_errors = 0;
+        let error_threshold = 10;
         
         for (i, mut op) in operations.into_iter().enumerate() {
             if op.suggested_action == "skip" {
@@ -165,16 +167,24 @@ impl Scanner {
 
             match res {
                 Ok(_) => {
+                    consecutive_errors = 0; // Reset on success
                     op.status = "success".to_string();
                     progress_callback(i + 1, total, op.original_name.clone(), "success".to_string());
                 },
                 Err(e) => {
+                    consecutive_errors += 1;
                     op.status = "error".to_string();
                     op.error_message = Some(e.to_string());
                     progress_callback(i + 1, total, op.original_name.clone(), "error".to_string());
                 }
             }
             results.push(op);
+
+            // Fail-safe protection
+            if consecutive_errors >= error_threshold {
+                log::error!("Critical failure: Exceeded consecutive error threshold. Halting execution.");
+                break;
+            }
         }
         results
     }
