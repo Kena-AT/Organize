@@ -53,5 +53,5 @@ npm run tauri build
 
 - **Frontend**: React 19 / Next.js 16 (Static Export)
 - **Backend**: Rust (Tauri v2)
-- **Database**: SQLite 
+- **Database**: SQLite
 - **Styling**: Tailwind CSS
