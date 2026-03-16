@@ -57,3 +57,11 @@ Thumbs.db
 *.njsproj
 *.sln
 *.sw?
+
+# Microsoft Word temp files
+~$*.docx
+~$*.xlsx
+
+# Non-code project files (reference material)
+Designs/
+*.docx
