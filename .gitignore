@@ -40,10 +40,13 @@ Thumbs.db
 *.db-shm
 *.db-wal
 
-# Temporary Files
+# Temporary & Document Files
 *.tmp
 /tmp/
+*.docx
+*.doc
 *~$*.docx
+*.pen
 *.swp
 
 # IDEs

@@ -37,6 +37,7 @@ Grab the latest production installer for Windows:
    npm --prefix frontend install
    ```
 3. Run in development mode:
+
    ```bash
    npm run tauri dev
    ```
